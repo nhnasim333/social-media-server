@@ -1,4 +1,4 @@
-import QueryBuilder from "../../builder/QueryBuilder";
+
 import { TPost } from "./post.interface";
 import { Post } from "./post.model";
 
@@ -8,15 +8,39 @@ const createPostIntoDB = async (payload: TPost) => {
 };
 
 const getAllPostFromDB = async (query: Record<string, unknown>) => {
-  const postSearchableFields = ["postText"];
+  const searchTerm = query.searchTerm as string | undefined;
+  const userCollection = "users"; 
 
-  const productQuery = new QueryBuilder(Post.find(), query).search(
-    postSearchableFields
-  );
+  const pipeline: any[] = [
+    {
+      $lookup: {
+        from: userCollection,
+        localField: "userId",
+        foreignField: "_id",
+        as: "userId"
+      }
+    },
+    {
+      $unwind: "$userId"
+    }
+  ];
 
-  const result = await productQuery.modelQuery
-    .populate("userId")
-    .sort({ createdAt: -1 });
+  if (searchTerm) {
+    pipeline.push({
+      $match: {
+        $or: [
+          { postText: { $regex: searchTerm, $options: "i" } },
+          { "userId.username": { $regex: searchTerm, $options: "i" } },
+          { "userId.name": { $regex: searchTerm, $options: "i" } }
+        ]
+      }
+    });
+  }
+
+  pipeline.push({ $sort: { createdAt: -1 } });
+
+  const result = await Post.aggregate(pipeline);
+
   return result;
 };
 
